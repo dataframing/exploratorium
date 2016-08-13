@@ -1,0 +1,7 @@
+# We can't store large CSVs on GitHub, unfortunately
+*/**/*.csv
+
+# Remove R connection files
+*/**/report_cache/**
+*/**/report_files/**
+*/**/rsconnect/**

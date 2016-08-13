@@ -1,0 +1,184 @@
+---
+title: ""
+author: "Danny Vilela"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r knitr_init, echo = FALSE}
+library(knitr)
+library(printr)
+
+## Global options
+options(max.print = "75")
+opts_chunk$set(echo = FALSE, cache = TRUE, prompt = FALSE, tidy = TRUE,
+               comment = NA, message = FALSE, warning = FALSE,
+               fig.width = 18, fig.height = 9.5)
+opts_knit$set(width = 75)
+```
+
+# Exploring Modern Terrorism
+
+*By*: Danny Vilela
+
+*Date*: `r Sys.Date()`
+
+---
+
+(***Note***: this document with plots is quite large, so it might take a second to render everything. I also suggest clicking "Hide Toolbars" in the bottom right for a better viewing experience. Thanks!)
+
+```{r load.data, include = FALSE, cache = TRUE}
+packages <- c("dplyr", "ggplot2", "ggthemes", "printr")
+invisible(lapply(packages, library, character.only = TRUE))
+
+source("../R/functions.R")
+
+# Load, extract data
+df <- read.csv("../data/enigma-terrorism.csv", header = TRUE)
+location <- select(df, year = iyear, month = imonth, day = iday,
+                   country.id = country, country.name = country_txt,
+                   state = provstate, city = city, latitude = latitude,
+                   longitude = longitude, region = region_txt,
+                   primary.target = targtype1_txt, all.fatalities = nkill,
+                   all.wounded = nwound)
+
+regional.dist <- freq.and.proportion(data = location, on = "region")
+colnames(regional.dist) <- c("Region", "Frequency", "Proportion")
+regional.dist$Region <- as.character(regional.dist$Region)
+regional.dist$Frequency <- as.numeric(regional.dist$Frequency)
+regional.dist$Proportion <- as.double(regional.dist$Proportion)
+```
+
+Between the ongoing struggles throughout the Middle East and the worldwide effort to counter the proliferation of terrorist activity, there's seemingly more for us to be concerned about than ever before.
+
+Given the increasing globalization and communication avenues provided by the Internet, there's something to be said about the relative safety of our communities — how safe are we when we're all hyper-connected? How can we mitigate the root causes of terrorism? We look to our data in hopes of shedding light on the current situation.
+
+---
+
+Terrorism is anything but a uniform distribution. Almost nine out of ten incidents of terrorism since 1970 have taken place in half of the twelve continental regions, according to the Global Terrorism Database.
+
+```{r show.top, echo = FALSE}
+top <- head(regional.dist)
+total <- rbind(top, c("Total", sum(top$Frequency), sum(top$Proportion)))
+total
+```
+
+That said, it's easy to glaze over the numbers and accept them as truth. As a plot, the staggering differences in geographic distribution really come to life:
+
+```{r plot.world, echo = FALSE}
+
+world.map <- borders("world", colour = "gray76", fill = "gray55")
+map.layer <- ggplot() + world.map
+
+# Get valid locations based on non-NA longitudes and latitudes
+valid.coordinates <- filter(location, !is.na(longitude) | !is.na(latitude))
+
+# Plot terrorism over time, from 1970 - 2015
+map.layer + geom_point(data = valid.coordinates, alpha = 1/25,
+                       aes(x = longitude, y = latitude, color = year)) +
+    lims(y = c(-57, NA)) + theme_fivethirtyeight() +
+    scale_color_continuous(low = "blue", high = "orange", breaks = c(seq(1970, 2015, 2))) +
+    theme(axis.title = element_text(),
+          legend.title = element_blank(),
+          axis.text.y = element_blank(), axis.title.x = element_blank(),
+          axis.text.x = element_blank(), axis.title.y = element_blank(),
+          legend.background = element_rect(fill = "gray94", size = .5, linetype = "dotted"),
+          legend.position = c(0.495, 0),
+          legend.key.size = grid::unit(0.35, "cm"),
+          legend.key.width = grid::unit(6, "cm")) +
+    ggtitle(label = "Terrorism has clustered around the Middle East, North Africa, and the Indian Subcontinent",
+            subtitle = "Incidents of terrorism worldwide since 1970, as determined by the Global Terrorism Database")
+```
+
+High-density terrorism areas like the Middle East and Indian Subcontinent are plagued by both recent and non-recent terrorism. This is no secret: due to post-9/11 geopolitical turmoil and gaping economic disparities, both regions lend themselves to individuals who join terrorist organizations for communal acceptance and survival.
+
+Even if we only consider modern terrorism, our global outlook doesn't look favorable. In fact, according to the Global Terrorism Database, **terrorism from 2012 through 2015 have accounted for 33% of worldwide recorded terrorism since 1970**.
+
+```{r 2012-to-2015, echo = FALSE}
+
+# Tabularize data on year
+yearly.dist <- freq.and.proportion(data = location, on = "year")
+yearly.dist$year <- as.numeric(yearly.dist$year) + 1970
+
+yearly.top <- head(yearly.dist, n = 4)
+yearly.total <- rbind(yearly.top, c("Total", sum(yearly.top$frequency), sum(yearly.top$proportion)))
+colnames(yearly.total) <- c("Year", "Frequency", "Proportion")
+yearly.total
+```
+
+As of 2000, the Middle East and South Asia have absorbed much of the ongoing terrorism, with Australia proving relatively safe:
+
+```{r plot.modern.region, echo = FALSE}
+
+# Filter for, plot terrorist incidents in the 21st century
+after.2000 <- filter(valid.coordinates, year >= 2000)
+
+# Which regions have experienced the most of modern terrorism?
+region.dist <- freq.and.proportion(data = after.2000, on = "region")
+
+ggplot(data = region.dist,
+       mapping = aes(x = region, y = proportion, fill = proportion)) +
+    geom_bar(stat = "identity") +
+    scale_fill_continuous(guide = FALSE, low = "grey", high = "firebrick1") +
+    coord_flip() + scale_x_discrete(limits = region.dist$region) +
+    theme_fivethirtyeight() +
+    theme(axis.title = element_text(),
+          axis.text.y = element_text(), axis.title.y = element_blank(),
+          axis.text.x = element_text(), axis.title.x = element_text(),
+          plot.title = element_text(),
+          legend.title = element_blank(), legend.background = element_blank()) +
+    labs(y = "Proportion of Terrorist Incidents") +
+    ggtitle(label = "Top 2 regions make up about 70% of modern terrorist incidents",
+            subtitle = "Relatively dwarfing the number of instances elsewhere.")
+```
+
+...and on a country-specific basis, India, Afghanistan, Pakistan, and especially Iraq are experiencing the worst of modern terrorism en masse:
+
+```{r plot.modern.country, echo = FALSE}
+country.dist <- freq.and.proportion(data = after.2000, on = "country.name")[1:20, ]
+country.dist$country.name <- as.character(country.dist$country.name)
+country.dist$country.name <-
+    replace(country.dist$country.name,
+            country.dist$country.name == "West Bank and Gaza Strip", "Gaza Strip")
+
+ggplot(data = country.dist,
+       mapping = aes(x = country.name, y = proportion, fill = proportion)) +
+    geom_bar(stat = "identity") +
+    scale_fill_continuous(guide = FALSE, low = "grey", high = "firebrick1") +
+    coord_flip() + scale_x_discrete(limits = country.dist$country.name) +
+    theme_fivethirtyeight() +
+    theme(axis.title = element_text(),
+          axis.text.y = element_text(), axis.title.y = element_blank(),
+          axis.text.x = element_text(), axis.title.x = element_text(),
+          plot.title = element_text(),
+          legend.title = element_blank(), legend.background = element_blank()) +
+    labs(y = "Proportion of Terrorist Incidents") +
+    ggtitle(label = "Iraq alone has seen 20% of all terrorist incidents since 2000")
+```
+
+With the turn of the century and proliferation of the Internet, we would expect a more unified, global, and understanding online community. Despite this intuition, we unfortunately see deeply-rooted political and international conflicts involving the Middle East contribute to the fear and retaliation that is terrorism.
+
+```{r plot.modern.time, echo = FALSE}
+
+# Visualize terrorism over time
+ggplot(data = yearly.dist, aes(x = year, y = frequency, color = frequency)) +
+    geom_line() + theme_fivethirtyeight() +
+    scale_color_continuous(guide = FALSE, low = "grey50", high = "firebrick1") +
+    ggtitle(label = "Incidents of terrorism over time, as recorded by the Global Terrorism Database") +
+    scale_x_continuous(breaks = seq(1970, 2015, 5))
+```
+
+Fortunately, we see numerous silver linings: despite rapid increase in early 2010's, terrorism declined by 12% from 2014 to 2015. Furthermore, given the declining insurgency in Iraq there is strong evidence of a peaceful, brighter future for both the Middle East and the world at large. Lastly, it's important to recognize that 52% of countries didn't experience a single terrorist incident and closer to 60% didn't experience a single death in 2014 — the deadliest recorded year for terrorism.
+
+```{r countries, echo = FALSE}
+in.2014 <- filter(location, year == 2014)
+in.2014.dist <- freq.and.proportion(data = in.2014, on = "country.name")
+colnames(in.2014.dist) <- c("Country", "Frequency", "Proportion")
+in.2014.dist
+```
+
+These findings aren't empty, either: there is clear evidence that, all things considered, [we are currently living in the safest era of human history](http://www.pri.org/stories/2014-10-23/world-actually-safer-ever-and-heres-data-prove). When we zoom out from terrorism and consider other leading factors — including global health, economy, welfare, access to food — the long-term, global trends consistently pull upwards. These positive trends tell us to keep looking at the big picture and strive for a better, safer, more inclusive tomorrow.
+
+---
+
+Thank you for your time! Feel free to contact me at <danny.vilela@nyu.edu> if you have any questions.
