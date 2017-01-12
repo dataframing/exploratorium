@@ -58,7 +58,7 @@ Exploratory Analysis
 
 ``` r
 # School-wise breakdown of test takers, average scores, etc.
-scores <- read_csv("./data/SAT_Results.csv", col_types = "ccnnnn")
+scores <- read_csv("../data/SAT_Results.csv", col_types = "ccnnnn")
 ```
 
 By the power of the tidyverse, we can easily do some work to make the dataset slightly more pleasant and opt to do so.
@@ -188,7 +188,7 @@ The above analysis leaves a lot to be seen: what about location? It's no secret 
 
 ``` r
 # School-wise breakdown on NYC schools, including location!
-directory <- read_csv("./data/DOE-High-School-Directory-2013-2014.csv")
+directory <- read_csv("../data/DOE-High-School-Directory-2013-2014.csv")
 
 # Tidying column and school names
 names(directory) <- names(directory) %>% 
