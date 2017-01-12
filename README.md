@@ -1,8 +1,8 @@
 ## Exploratorium
 
-### Quick Look
+### Quick Look 👀
 
-Hey, you! Yes, you. If you want to check out my Exploratorium with some nifty ✨*CSS* ✨, check out my website/blog/digital manifestation over at [datafra.me](https://datafra.me). Thanks!
+Hey, you! Yes, you. If you want to check out my Exploratorium with some nifty ✨*CSS*✨, check out my website/blog/digital manifestation over at [datafra.me](https://datafra.me). Thanks!
 
 ### Summary
 
