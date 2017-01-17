@@ -252,8 +252,8 @@ There doesn't seem to be a consistent difference between boroughs -- generally, 
 
 It's no secret that the public school system in NYC is flirting with misery. There's an ongoing segregation -- both racial and financial -- in the schools that ties into a lot more than this post can really cover. It's a bit disappointing to see just how *few* high school seniors take the SAT -- not even considering performance -- and how it relates to the school's academic performance culture.
 
-> Feel free to check out any code, data, and notebooks for this analysis on the [Exploratorium](https://github.com/dataframing/exploratorium) repository! Everything's open, but get in touch if you have any questions!
+> Feel free to check out any code, data, and notebooks for this analysis on the [Exploratorium](https://github.com/dataframing/exploratorium/NYC-SAT) repository! Everything's open, but get in touch if you have any questions!
 
 ------------------------------------------------------------------------
 
-This is the first of a series of analyses! Follow me on [Twitter](https://twitter.com/dataframing) for more soon! <!-- Something something follow me on [Twitter](https://twitter.com/dataframing) I'm building my brand. -->
+This is the first of a series of analyses! Follow me on [Twitter](https://twitter.com/dataframing) for more soon!
