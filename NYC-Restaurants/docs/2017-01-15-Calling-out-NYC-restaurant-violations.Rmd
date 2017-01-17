@@ -97,7 +97,7 @@ summary.violations %>%
   rename(Grade = X1, Frequency = X2) %>%
   mutate_all(.funs = str_trim) %>%
   mutate(Frequency = as.numeric(Frequency)) %>%
-  kable(align = "cr")
+  kable
 ```
 
 Woah! It seems like we've jumped the gun: there are P and Z grades and...a whole lot of NA's. It turns out that we're looking at the data incorrectly: this dataset is longitudinal (or, "panel") data, which means that we may be looking at one or more restaurants over one or more time periods. If we look at my current NYU zipcode (10003) and choose a random restaurant, multiple rows will be returned:

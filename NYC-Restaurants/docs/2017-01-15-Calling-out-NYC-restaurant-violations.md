@@ -91,18 +91,18 @@ summary.violations %>%
   rename(Grade = X1, Frequency = X2) %>%
   mutate_all(.funs = str_trim) %>%
   mutate(Frequency = as.numeric(Frequency)) %>%
-  kable(align = "cr")
+  kable
 ```
 
-|      Grade     |  Frequency|
-|:--------------:|----------:|
-|        A       |     161284|
-|        B       |      33679|
-|        C       |       8450|
+| Grade          |  Frequency|
+|:---------------|----------:|
+| A              |     161284|
+| B              |      33679|
+| C              |       8450|
 | Not Yet Graded |       1907|
-|        P       |       1450|
-|        Z       |       2053|
-|      NA's      |     226016|
+| P              |       1450|
+| Z              |       2053|
+| NA's           |     226016|
 
 Woah! It seems like we've jumped the gun: there are P and Z grades and...a whole lot of NA's. It turns out that we're looking at the data incorrectly: this dataset is longitudinal (or, "panel") data, which means that we may be looking at one or more restaurants over one or more time periods. If we look at my current NYU zipcode (10003) and choose a random restaurant, multiple rows will be returned:
 
@@ -138,12 +138,12 @@ entire.tb %>%
   kable(align = "clccc")
 ```
 
-| inspection.date | violation.description                                                                                                                                                                                                                                                           | critical.flag | score | grade |
-|:---------------:|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-------------:|:-----:|:-----:|
-|    2016-12-02   | Food contact surface not properly washed, rinsed and sanitized after each use and following any activity when contamination may have occurred.                                                                                                                                  |    Critical   |   5   |   A   |
-|    2015-08-12   | Non-food contact surface improperly constructed. Unacceptable material used. Non-food contact surface or equipment improperly maintained and/or not properly sealed, raised, spaced or movable to allow accessibility for cleaning on all sides, above and underneath the unit. |  Not Critical |   3   |   A   |
+| inspection.date | violation.description                                                                                                      |  critical.flag | score | grade |
+|:---------------:|:---------------------------------------------------------------------------------------------------------------------------|:--------------:|:-----:|:-----:|
+|    2016-11-22   | Food not protected from potential source of contamination during storage, preparation, transportation, display or service. |    Critical    |   5   |   A   |
+|    2016-07-27   | NA                                                                                                                         | Not Applicable |   0   |   NA  |
 
-(All above records belong to Manhattan restaurant *Fuku*)
+(All above records belong to Manhattan restaurant *Gotham Pizza*)
 
 Were we a bit wiser, we would have looked at NYC DOHMH's handy-dandy ["How We Score And Grade"](http://www1.nyc.gov/assets/doh/downloads/pdf/rii/how-we-score-grade.pdf), or a great secondary source: the [FAQ on BulletProof! Food Safety's blog](http://www.bulletprooffoodnyc.com/faqs-inspections-hearings/). In short, we learn:
 
