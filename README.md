@@ -12,6 +12,8 @@ Exploratorium is a container for exploratory data analysis microprojects I've wo
 
 | Project | About |
 |:--------|-------|
-| Calling out NYC restaurant violations | I looked at hygiene grades and violations from NYC restaurants, breaking it down by borough and learning about how ratings work along the way. |
-| Analyzing NYC SAT scores | I looked into SAT scores from NYC public high schools, analyzing borough differences, score distributions, and more. |
+| ![](twitching/docs/gootecks.png) Understanding Twitch broadcaster dynamic ![](twitching/docs/gootecks.png) | ~In the works~ |
+| [Surveying tech in 2016](http://datafra.me/blog/stackoverflow-survey) | Using StackOverflow data from their annual Developer survey, I analyzed how education, gender, and salary come into play in tech. |
+| [Calling out NYC restaurant violations](http://datafra.me/blog/Calling-out-NYC-restaurant-violations) | I looked at hygiene grades and violations from NYC restaurants, breaking it down by borough and learning about how ratings work along the way. |
+| [Analyzing NYC SAT scores](http://datafra.me/blog/Analyzing-NYC-SAT-scores) | I looked into SAT scores from NYC public high schools, analyzing borough differences, score distributions, and more. |
 | Visualizing Modern Terrorism | A visual approach to exploring, understanding, and communicating about modern (post-1970) terrorism. |
