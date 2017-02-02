@@ -12,7 +12,7 @@ Exploratorium is a container for exploratory data analysis microprojects I've wo
 
 | Project | About |
 |:--------|-------|
-| <img src="twitching/docs/gootecks.png" alt = "No kappas here" height = 20> Understanding Twitch broadcaster dynamic <img src="twitching/docs/gootecks.png" alt = "No kappas here" height = 20> | ~In the works~ |
+| <img src="twitching/docs/gootecks.png" alt = "No kappas here" height = 20> Viewership on Twitch channels <img src="twitching/docs/gootecks.png" alt = "No kappas here" height = 20> | Using some Twitch live-stream data, I took a look at how viewership manifests across categories and channels, especially when considering getting featured or being a mature channel. |
 | [Surveying tech in 2016](http://datafra.me/blog/stackoverflow-survey) | Using StackOverflow data from their annual Developer survey, I analyzed how education, gender, and salary come into play in tech. |
 | [Calling out NYC restaurant violations](http://datafra.me/blog/Calling-out-NYC-restaurant-violations) | I looked at hygiene grades and violations from NYC restaurants, breaking it down by borough and learning about how ratings work along the way. |
 | [Analyzing NYC SAT scores](http://datafra.me/blog/Analyzing-NYC-SAT-scores) | I looked into SAT scores from NYC public high schools, analyzing borough differences, score distributions, and more. |
