@@ -1,0 +1,371 @@
+---
+title: "TripleLift Challenge"
+author: "Danny Vilela"
+date: "2/3/2017"
+output: 
+  # html_document
+  md_document:
+    variant: markdown_github
+---
+
+To the team at Triplelift,
+
+Hi! My name is Danny Vilela and this is my submission for your data challenge. I approached the exploration of the dataset and communication of my code in the form resembling the other exploratory data analysis posts on my website --- it's my most comfortable data analysis form, and I hope it helps explain my thought process! Without further ado, let's dive into the dataset with the goal of **developing a model that's able to predict clickthrough rates**.
+
+---
+
+# Setup
+
+```{r session-setup, message = FALSE}
+# Some behind-the-curtains setup
+library(knitr)
+library(randomForest)
+library(scales)
+library(ggthemes)
+library(tidyverse)
+library(lubridate)
+library(caret)
+library(dummies)
+library(data.table)
+
+knitr::opts_chunk$set(
+  cache = TRUE, 
+  warning = FALSE, 
+  message = FALSE, 
+  dpi = 180,
+  comment = "#>",
+  collapse = TRUE
+)
+
+options(width = 75)
+
+theme_set(theme_minimal(base_family = "Menlo") +
+            theme(plot.title=element_text(family = "Menlo")))
+```
+
+# Pre-processing
+
+To start off, I immediately noticed I was dealing with a fairly sizable dataset: approximately half a gigabyte spread across 8 files (*code-test0000_part_00*, ..., *code-test0007_part_00*). Furthermore, I quickly noticed the files were not comma-delimited but pipe-delimited ("|" separating each observation field).
+
+To make the analysis more tractable, I opted to join the files into one master file. I first manually inserted the header names into the master file *master.csv* -- there are likely better ways to do so with *sed*, but for a fairly low-dimensional dataset I thought it would be too much of a time sink.
+
+Once I had the pipe-separated header in *master.csv*, I joined all files into *master.csv* like so:
+
+```{bash processing, eval = F}
+# With files in the local directory
+for file in code-test*; do cat $file >> master.csv; done
+```
+
+This gives us a 450 MB file containing all records. Neat! This is actually pushing *dplyr* -- my go-to for analysis in R -- to its limits. *data.table* does a much better job working with larger data sets, so I'll weave between the two whenever necessary. Check the comments for a more thorough explanation, if necessary!
+
+# Exploratory data analysis
+
+Next is the start of the analysis. To read the large data file readr usually suffices but *data.table*'s *fread* is my go-to for larger (250 MB+) files.
+
+```{r init, results = 'hide'}
+# Read in our data
+data <- data.table::fread("../data-code-test/master.csv", sep = "|")
+
+# NOTE: The instructions say to ignore the `is_adserver` column.
+data[, is_adserver := NULL]
+```
+
+To know what I was working with, I usually look at the head
+
+```{r head}
+# Get the head of our dataset
+data %>% head
+```
+
+and tail
+
+```{r tail}
+# Get the tail, too.
+data %>% tail
+```
+
+From the email's description of the fields I had a good feel for what each feature represented, but I didn't know how long the timestamp represented: is this data across a day, a week, a month? These could all complicate our prediction task to a great degree (mostly trend, cycles, seasonality).
+
+```{r date-spread}
+# Grouping by timestamp, return count for each entry.
+data[, .N, .(timestamp)] %>%
+  slice(c(1:4, (n()-4):n()))
+```
+
+From both the head and tail and the above, we know that the data only spans one day: October 25th, 2015. Without *head* and *tail* we might have thought it ends at 10:32:35 just because the column is read as a character and not a datetime format, but luckily tail showed us otherwise. An easy solution to the above problem is to define the column type while reading in the file, but I'll do so below.
+
+Next, I usually like taking a look at the summary of a dataset -- is there anything concerning or flat out misleading?
+
+```{r summary}
+# Do some preprocessing to get our column format right.
+# For all rows, change timestamp to POSIXct format,
+# region and country to factors (not character).
+data[, c("timestamp", "region", "country") := .(
+  lubridate::ymd_hms(timestamp),
+  as.factor(region),
+  as.factor(country))
+]
+
+# Summarize each column.
+data %>% summary
+```
+
+A few of these have no reasonable interpretation -- the distribution of *os_id* doesn't tell us much. However, from this summary we can see the following:
+
+- Yes, for sure, we only span one day.
+
+- Region seems to follow general population. This isn't anything new -- most analyses that have to do with people tend to center around high-population areas like California, New York, etc. -- but the relatively sharp cliff from CA to TX is worth noting.
+
+- The US is, by far, the largest nation reached by the day's advertisements. Again, not a big surprise (see above point), but the difference between the US and the next valid country, Great Britain, is very steep.
+
+- Mouseovers and clicks are long, long right tails. This is likely just the domain expectation -- if a user doesn't have AdBlock enabled seldom will they mouseover an advertisement, and an even smaller fraction will actually click on the ad.
+
+- There are large number of *NA* values in the *max_duration* and *video_length* columns -- what gives?! The most likely interpretation is that 8,294,655 impressions (remember: each record in this data set is an impression belonging to a campaign) were not videos.
+
+- Lastly, *viewable* seems to follow a similar, albeit more normal distribution relative to *mouseovers* and *clicks*. This may offer insight into the current proliferation of browser AdBlock extensions, and how advertisers can best anticipate and mitigate the effects of ad blockers.
+
+Before honing in on our target variable -- (I assume) *clicks* -- we can do a bit more analysis on the dataset to get a feel of what we're working with. Intuitively, I'm interested at the interplay and distributions between *viewable*, *mouseovers*, and *clicks* -- what does the churn funnel look like across all campaigns on the 25th?
+
+```{r intro}
+# Group all data into whether it was viewable,
+# moused-over, and clicked. This gives us
+# 2^3 different subgroup configurations.
+impression.funnel <- data %>%
+  select(viewable, mouseovers, clicks) %>%
+  group_by(viewable, mouseovers, clicks) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  mutate(viewable = ifelse(viewable == 1, "Viewable", "Not viewable"),
+         mouseovers = ifelse(mouseovers == 1, "Mouse over", "Mouse not over"),
+         clicks = ifelse(clicks == 1, "Clicked", "Did not click")) %>%
+  mutate_at(.cols = vars(viewable, mouseovers, clicks),
+            .funs = funs(as.factor))
+
+# Plot our heatmap that'll show how click counts
+# change across viewable vs non-viewable ads.
+ggplot(data = impression.funnel,
+       mapping = aes(x = mouseovers, y = clicks)) +
+  geom_tile(mapping = aes(fill = count)) +
+  scale_fill_gradient(low = "beige", high = "red", guide = "none") +
+  geom_text(aes(label = count %>% comma)) +
+  facet_grid(viewable ~ .) +
+  labs(x = "Per-impression mouseover count", 
+       y = "Per-impression click count",
+       title = "Clickthrough rates over ad impression lifetime",
+       subtitle = paste("Our values support our prior: a small minority of",
+                        "ads are ever hovered, and even fewer are clicked on",
+                        sep = "\n")) +
+  theme(plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(face = "italic", size = 9.5,
+                                     lineheight = unit(1.25, "cm")),
+        axis.title.x = element_text(margin = margin(t = 10, b = 7)),
+        axis.title.y = element_text(margin = margin(l = 10, r = 7)))
+```
+
+As we might expect, a large portion of impressions are not viewable, hence the mouse cannot hover over the ad, and subsequently the ad cannot be (and was not) clicked. I'm most surprised by ads that are not viewable but are either: clicked (mouse over or not) or not clicked and mouse over -- how does that happen? It isn't the focus of this analysis but it may be worth looking into the instrumentation and data collection -- it may signal that the system that tracks whether an ad is viewable can use tuning, or perhaps how we record whether an ad is hovered or clicked on needs some work.
+
+> Note: I'm not fully satisfied with the above plot. I can imagine ways in which to better communicate the viewable -> hoverable -> clicked funnel, but was unable to get it working how I envisioned. If I had a bit more time, I'd look into improving how the funnel is communicated for visual clarity.
+
+From the above chart we can also see that the ratio between *did not click* to *clicked* across *viewable* and *not viewable* ads is very different: only `r ((2342+1995)/(65689+4889384)) %>% percent` of not viewable ads were clicked on, whereas `r ((12788+20654)/(2665461+636511)) %>% percent` were (excluding mouse over or not over ad). This likely reinforces our intuition that visible ads -- those not blocked by AdBlock or other advertisement circumvention extensions -- are much more likely to be clicked on relative to non-visible ads.
+
+Our next question is regarding campaign size: is there any significant correlation between a larger campaign (more impressions) and the number of clicks received? Note that in order to have data at the campaign resolution, we need to aggregate based on our campaign identifier, *campaign*.
+
+```{r campaign-size-vs-clicks}
+# Determine clickthrough rate on a per-campaign resolution.
+impressions.vs.clicks <-
+  data %>%
+  select(campaign, clicks) %>%
+  group_by(campaign) %>%
+  summarize(
+    impression.count = n(),
+    clickthrough.rate = (sum(clicks, na.rm = T) / impression.count)
+  ) %>%
+  ungroup()
+
+# Plot campaign impression counts against clickthrough rate.
+ggplot(data = impressions.vs.clicks,
+       mapping = aes(x = impression.count, y = clickthrough.rate)) +
+  geom_line() +
+  scale_x_log10(labels = 10^(0:6) %>% comma, breaks = 10^(0:6)) +
+  scale_y_continuous(labels = percent) +
+  stat_smooth() +
+  labs(x = "Impression count",
+       y = "Clickthrough rate",
+       title = "Impressions aren't everything",
+       subtitle = paste("No significant relationship between impression",
+                        "count and advertisement clickthrough rate", sep = "\n")) +
+  theme(plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(face = "italic", size = 9.5,
+                                     lineheight = unit(1.25, "cm")),
+        axis.title.x = element_text(margin = margin(t = 10, b = 7)),
+        axis.title.y = element_text(margin = margin(l = 10, r = 7)))
+```
+
+For impression count, with every increase in an order of magnitude we can't really make strong statements on expected clickthrough rate. The data is incredibly noisy at the campaign level, and no clear trends emerge -- even with a smoothing effect applied onto the data, the overall pattern points to nearly zero difference in clickthrough rate between campaigns with 100 impressions versus campaigns with upwards of 100,000 impressions.
+
+The *ever so slight* increase at the end may be worth investigating, but it's worth noting that the confidence intervals increase to reflect the lack of sample size and the high variance in clickthrough rate at large (> 100,000) impressions.
+
+```{r check-how-many}
+# Quick check on what campaigns had above 100,000 impresssions.
+impressions.vs.clicks %>%
+  filter(impression.count > 1e5) %>%
+  arrange(desc(clickthrough.rate)) %>%
+  mutate(clickthrough.rate = clickthrough.rate %>% percent) %>%
+  filter(row_number() == 1 | row_number() == n())
+```
+
+Again, nothing too telling: for campaigns with above 100,000 impressions, clickthrough rate can vary between 0.11% and 2.60%. This only reinforces our idea that impression count may not be the most telling metric on how well a campaign's clickthrough rate will be. Speaking of which, I almost forgot to answer the actual challenge! Let's build a model.
+
+# Predictive Modeling
+
+Now's as good of a time as ever to build our model for predicting clickthrough rates! I'm a big believer in starting off with a baseline model -- a model that may not be the most sophisticated or """sexy""", but that gets us to a standard worth improving upon. 
+
+To kick things off, I'll go with quite possibly the easiest prediction possible: the mean. We can use the mean of our target as an absolute baseline because unless we do something *seriously* wrong, we *cannot* do worse than this. 
+
+So, let's first split our dataset into our training and testing sets on a 70/30 split: 
+
+```{r train-test-split}
+# First, group our data so we're looking at per-campaign clickthrough rate.
+campaigns <- data %>%
+  select(campaign, clicks) %>%
+  group_by(campaign) %>%
+  summarize(
+    impression.count = n(),
+    clickthrough.rate = (sum(clicks, na.rm = T) / impression.count)
+  ) %>%
+  ungroup(campaign)
+
+# Set our random generation seed, requested sample size,
+# and extract the indices we'd like in our training set.
+set.seed(123)
+sample_size <- floor(0.70 * nrow(campaigns))
+train_indices <- sample(seq_len(nrow(campaigns)), size = sample_size)
+
+# Isolate our training vs test data sets.
+train <- campaigns[train_indices, ]
+test <- campaigns[-train_indices, ]
+```
+
+then compute our baseline prediction heuristic (mean of our training data set's target feature). To evaluate how well this "prediction" accounts for the data set's variance, we can use the Root Mean Squared error, which is just the mean of the squared difference between the predicted and actual values,
+
+```{r baseline-mean}
+# Determine mean we'll use to predict new values.
+train.clickthrough.mean <- mean(campaigns$clickthrough.rate)
+
+# Assign new column to test in order to compute MSE
+test <- test %>%
+  mutate(predicted.clickthrough.rate = train.clickthrough.mean)
+
+# Compute MSE, then Root MSE, and output as MSE.
+mean((test$predicted.clickthrough.rate - test$clickthrough.rate)^2, na.rm = TRUE) %>%
+  sqrt %>%
+  percent
+```
+
+That's...surprising! Interpreted, our most basic predictive model is able to achieve a Root Mean Squared Error of 0.004. This means our basic model can, on average, predict an accurate clickthrough rate for any given campaign to within 0.425% of its actual clickthrough rate -- this is actually within 1 standard deviation (`r var(campaigns$clickthrough.rate) %>% sqrt %>% percent`) of the overall campaign clickthrough rate mean!
+
+So, problem solved, right? Well, not quite. We would hope that a more sophisticated model would be able to make even better predictions on a campaign's clickthrough rate.
+
+Next, I'll ratchet up the sophistication: let's see how a random forest model might fare! I'm reaching for a random forest for a few reasons:
+
+- it's fairly robust out-of-the-box parameters (its default parameters are usually *very* close to ideal)
+
+- it's able to handle outliers very well -- this data set didn't exhibit that many significant outliers, but we can imagine a more viral ad campaign quickly throwing off a more variant model like a decision tree
+
+- based on our above observation of (noisy) clickthrough rate, it seems like a basic decision tree's inherent variance might not fit our data so well -- an ensemble approach mitigates this variance and generally performs very well
+
+> Note: I was a bit pressed for time, so I didn't have much time to really evaluate a model just above using the training data's mean. If I had an extra day or two, I would have iterated on the model like so: mean -> decision tree -> random forest. I also took at RuleFit which seems like a *very* promising model, although I would need more time to really understand its heuristics. Back to the modeling!
+
+I'll start by properly dividing our source data set in order to include the numerous categorical features that were left out for the basic model:
+
+```{r prepare-data}
+# categoricals <- c("browser_id", "os_id", "region", "country")
+# 
+# data.dummy <- dummy.data.frame(data %>% slice(1: 10000), names = categoricals, sep = "_")
+# 
+# by.campaign.encoded <- data.dummy %>%
+#   group_by(campaign) %>%
+#   summarize_at(.cols = vars(matches("browser_id_*"), matches("os_id_*"),
+#                             matches("region_*"), matches("country_*")),
+#                .funs = funs(relative.count(field = ., total = n())))
+# 
+# by.campaign.master <- data.dummy %>%
+#   group_by(campaign) %>%
+#   summarize(
+#     impression.count = n(),
+#     viewable.rate = relative.count(viewable, impression.count),
+#     mouseovers.rate = relative.count(mouseovers, impression.count),
+#     clickthrough.rate = relative.count(clicks, impression.count)
+#   ) %>%
+#   cbind(by.campaign.encoded)
+
+# Quick function definition for computing rates
+relative.count <- function(field, total) (sum(field, na.rm = T) / total)
+
+# Get per-campaign aggregate data on impressions, viewable rate, mouseover rate,
+# and our taret clickthrough rate.
+campaigns <- data %>%
+  group_by(campaign) %>%
+  summarize(
+    impression.count = n(),
+    viewable.rate = relative.count(viewable, impression.count),
+    mouseovers.rate = relative.count(mouseovers, impression.count),
+    clickthrough.rate = relative.count(clicks, impression.count)
+    # amount.of.video.completed = median(max_duration / video_length),
+    # video_length = relative.count(video_length, impression.count)
+  )
+
+# Likewise, set our random number's seed, isolate training indices, etc.
+set.seed(123)
+sample_size <- floor(0.70 * nrow(campaigns))
+train_indices <- sample(seq_len(nrow(campaigns)), size = sample_size)
+
+# Isolate training and test sets.
+train <- campaigns[train_indices, ]
+test <- campaigns[-train_indices, ]
+```
+
+Unfortunately, I've left a large part of the above code commented. When building predictive models, we usually want to encode categorical values (like *region*) that can take up to $k$ values (like *NY*, *CA*, etc.) into $k-1$ binary features. There's a ton of great reading on whether it's important to encode categoricals, and while performing this analysis I read [Kuhn's](http://appliedpredictivemodeling.com/blog/2013/10/23/the-basics-of-encoding-categorical-data-for-predictive-models) interpretation.
+
+Why'd I leave it out? Not because I was too rushed -- the code is there! -- but because of technical limitations. R works by loading data into memory, and even my 16 GB memory Macbook Pro isn't able to handle the data explosion caused by creating all those columns from only four categoricals: *browser_id*, *os_id*, *region*, and *country*.
+
+This is problematic -- if each record is an impression, how do we group them into campaigns and deal with the categorical columns? As far as I'm aware, there's no reasonable way to "average" or "choose" between numerous categorical values, so for now I'd rather drop those columns from our analysis at the risk of lower predictive strength. In a production setting, we would obviously rather keep as much data as possible and invest in better infrastructure.
+
+Likewise, I also left out the ratio between max duration and video length due to sparse records -- a large majority of impressions are not videos and thus any valid values would be extremely subject to even slight variance.
+
+Now that we've split our data into training and test sets, we can build our forest regressor model. Note that we're building our model on *clickthrough.rate*, which is a double and so our random forest will default to a regression problem and not a classification problem.
+
+```{r train-model}
+# Signal what features we would like evaluated as part of our random forest.
+cols <- c("impression.count", "viewable.rate", "mouseovers.rate", "clickthrough.rate")
+
+# Build our random forest!
+rf = randomForest(clickthrough.rate ~ ., data = train[, cols], keep.forest = TRUE)
+
+# Output the statistics and outcomes associated with random forest regression.
+rf
+```
+
+About time! We see that the the forest's root mean squared error is `r rf$mse %>% mean %>% sqrt %>% percent` -- lower than assuming the mean is the best estimation of our outcome! *Phew*. That said, the interpretability of our model has been compromised considerably: using only the columns defined in *cols*, we don't get any input from the region, country, etc. features that we dropped earlier. A shame, because we're effectively sure that including more features will never hurt the performance of a machine learning model.
+
+Now that we have an improved model, how can we derive business insights from it? Well, we can check variable importance, which gives us a relative understanding of what variables are most influential over our model's prediction for clickthrough rate.
+
+```{r var-importance}
+# Plot variable importance plot.
+# I'm foreign to base R's plotting devices, so excuse the...primitive...look!
+varImpPlot(rf)
+```
+
+Higher mouseover rate is our most important variable by a significant margin. Relatively, impression count and viewable rate linger at around half of mouseover rate's importance, which tells us a lot about how vital making many raw impressions is versus making them compelling. Luckily, most of our variables are actionable: with the exception of viewable rate -- which some websites *are* working against, with paywalls and such -- increasing impression count and mouseover rate is likely to be a task we can work on with the marketing teams. Further developing marketing campaigns to make use of this information is likely where I would take this analysis.
+
+Overall, we discovered and came to the following conclusions:
+
+- Impression count isn't everything -- there is no significant relationship between impression count for a campaign and its clickthrough rate.
+
+- Mouseover rate is king: ads that engage the user are much more valuable than ads that reach large audiences without clear engagement plans.
+
+The above also lends itself to A/B testing and experimental design approaches: if we test two ads -- a control and variant -- and the variant (assuming all A/B test/experiment priors are fulfilled) performs (significantly) better with respect to mouseover rate, we may be privvy to declaring B the champion for maximized clickthrough rate.
+
+# The end
+
+Thank you for your time! I sincerely enjoyed this challenge, and would be happy to answer any questions you might have via email at [danny.vilela@nyu.edu](javascript: void(0)) or [Twitter](https://www.twitter.com/dataframing).
